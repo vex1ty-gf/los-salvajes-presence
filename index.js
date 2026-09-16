@@ -218,5 +218,73 @@ client.on("interactionCreate", async interaction => {
     });
   }
 });
+// RELANCES AUTOMATIQUES DES PRÉSENCES
+setInterval(async () => {
+  const now = new Date();
 
+  const parisTime = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(now);
+
+  const hour = parisTime.find(p => p.type === "hour").value;
+  const minute = parisTime.find(p => p.type === "minute").value;
+
+  if (!["17", "19", "20"].includes(hour) || minute !== "00") return;
+
+  const date = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(now);
+
+  const guild = client.guilds.cache.first();
+  if (!guild || !data[guild.id]) return;
+
+  if (!data[guild.id].reminders) {
+    data[guild.id].reminders = {};
+  }
+
+  const reminderKey = `${date}-${hour}`;
+
+  if (data[guild.id].reminders[reminderKey]) return;
+
+  try {
+    const channel = await client.channels.fetch(data[guild.id].channelId);
+    await guild.members.fetch();
+
+    const nonResponders = guild.members.cache.filter(member =>
+      !member.user.bot &&
+      !data[guild.id].members[member.id]
+    );
+
+    if (nonResponders.size === 0) {
+      data[guild.id].reminders[reminderKey] = true;
+      saveData();
+      return;
+    }
+
+    const mentions = nonResponders.map(member => `<@${member.id}>`);
+
+    await channel.send({
+      content:
+        `⏰ **RELANCE PRÉSENCE — ${hour}H**\n\n` +
+        `Vous n'avez pas encore indiqué votre présence.\n` +
+        `Merci de cliquer sur **🟢 Présent**, **🟠 Retard** ou **🔴 Absent** dans le panneau ci-dessus.\n\n` +
+        mentions.join(" "),
+      allowedMentions: {
+        users: nonResponders.map(member => member.id)
+      }
+    });
+
+    data[guild.id].reminders[reminderKey] = true;
+    saveData();
+
+  } catch (error) {
+    console.error("❌ Erreur relance présence :", error);
+  }
+}, 20000);
 client.login(TOKEN);
